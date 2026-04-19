@@ -1,16 +1,17 @@
 local player = game.Players.LocalPlayer
-local spawnLocation = nil
-local isTeleporting = false
+local runService = game:GetService("RunService")
 
--- UI作成
+local noclipEnabled = false
+local godModeEnabled = false
+
+-- UI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FinalFixSystem"
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
 
 local function createBtn(text, pos, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 60, 0, 45)
+    btn.Size = UDim2.new(0, 70, 0, 45)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.Text = text
@@ -21,55 +22,53 @@ local function createBtn(text, pos, color)
     return btn
 end
 
-local setBtn = createBtn("SET", UDim2.new(1, -135, 0, 25), Color3.fromRGB(0, 100, 200))
-local getBtn = createBtn("GET", UDim2.new(1, -70, 0, 25), Color3.fromRGB(60, 60, 60))
+-- ボタン配置（右上に並べます）
+local noclipBtn = createBtn("Noclip", UDim2.new(1, -160, 0, 25), Color3.fromRGB(60, 60, 60))
+local godBtn = createBtn("GodMode", UDim2.new(1, -80, 0, 25), Color3.fromRGB(60, 60, 60))
 
--- [SET] 処理
-setBtn.MouseButton1Click:Connect(function()
-    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        spawnLocation = hrp.CFrame
-        setBtn.Text = "OK"
-        task.wait(1)
-        setBtn.Text = "SET"
+-- 1. 壁抜け (Noclip) ロジック
+noclipBtn.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    noclipBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 60, 60)
+end)
+
+runService.Stepped:Connect(function()
+    if noclipEnabled and player.Character then
+        for _, v in pairs(player.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
+            end
+        end
     end
 end)
 
--- [GET] 処理：物理接触しているものだけを運ぶ
-getBtn.MouseButton1Click:Connect(function()
-    if isTeleporting or not spawnLocation then return end
+-- 2. 無敵 & ノックバック無効 (God Mode) ロジック
+godBtn.MouseButton1Click:Connect(function()
+    godModeEnabled = not godModeEnabled
+    godBtn.BackgroundColor3 = godModeEnabled and Color3.fromRGB(255, 0, 100) or Color3.fromRGB(60, 60, 60)
     
     local char = player.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    isTeleporting = true
-    getBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-
-    -- 現在地を保存
-    local enemyPos = hrp.CFrame
-
-    -- 【超軽量ロジック】自分の足や手に「触れている」パーツを特定
-    local targetParts = {}
-    local touching = hrp:GetTouchingParts() -- RootPartに触れているものを直接取得
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
     
-    for _, p in pairs(touching) do
-        if not p:IsDescendantOf(char) then
-            table.insert(targetParts, p)
+    if godModeEnabled and hum then
+        -- ダメージを受けないようにステートを変更
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+    else
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+        hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+    end
+end)
+
+-- ノックバック（物理的な衝撃）を常に打ち消す
+runService.Heartbeat:Connect(function()
+    if godModeEnabled and player.Character then
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0) -- 横方向の衝撃をリセット
+            hrp.RotVelocity = Vector3.new(0, 0, 0) -- 回転衝撃をリセット
         end
     end
-
-    -- ワープ実行
-    hrp.CFrame = spawnLocation
-    for _, p in pairs(targetParts) do
-        if p and p.Parent then p.CFrame = spawnLocation end
-    end
-
-    task.wait(0.6) -- 納品判定待ち
-
-    -- 戻る
-    hrp.CFrame = enemyPos
-    
-    isTeleporting = false
-    getBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 end)
