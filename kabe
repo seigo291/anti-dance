@@ -1,17 +1,17 @@
 local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 
-local ghostActive = false
-local ghostChar = nil
+-- 【設定】Dexで調べた「窓のすぐ内側」の座標をここに入れる
+-- とりあえず現在の位置から「前方に15スタッド」ワープする設定にしています
+local teleportDistance = 15 
 
--- UI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
 
 local function createBtn(text, pos, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 100, 0, 45)
+    btn.Size = UDim2.new(0, 120, 0, 50)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.Text = text
@@ -22,51 +22,46 @@ local function createBtn(text, pos, color)
     return btn
 end
 
-local ghostBtn = createBtn("GHOST MODE", UDim2.new(1, -110, 0, 25), Color3.fromRGB(40, 40, 40))
+local bypassBtn = createBtn("WINDOW BYPASS", UDim2.new(0.5, -60, 1, -100), Color3.fromRGB(255, 50, 50))
 
--- ゴーストモード：物理的な干渉をすべてバイパスする
-ghostBtn.MouseButton1Click:Connect(function()
-    ghostActive = not ghostActive
-    ghostBtn.BackgroundColor3 = ghostActive and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(40, 40, 40)
-    
+bypassBtn.MouseButton1Click:Connect(function()
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    if ghostActive then
-        -- 【発動時】物理演算から切り離す
-        -- キャラクターを空中にわずかに浮かせて「アンカー」する
-        hrp.Anchored = true
-        
-        -- 移動用のループ（サーバーの座標チェックを騙す）
-        task.spawn(function()
-            while ghostActive do
-                local moveDir = char.Humanoid.MoveDirection
-                if moveDir.Magnitude > 0 then
-                    -- アンカーされた状態で座標を少しずつずらす（サーバーには「歩いている」ように見えない）
-                    hrp.CFrame = hrp.CFrame + (moveDir * 0.8) -- 速度調整
+    -- 1. 掴んでいるターゲットを特定
+    local targetHRP = nil
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and not v:IsDescendantOf(char) then
+            if (v.Position - hrp.Position).Magnitude < 10 then
+                local model = v:FindFirstAncestorOfClass("Model")
+                if model and model:FindFirstChild("HumanoidRootPart") then
+                    targetHRP = model.HumanoidRootPart
+                    break
                 end
-                
-                -- すべてのパーツの衝突判定を毎フレーム強制OFF
-                for _, v in pairs(char:GetDescendants()) do
-                    if v:IsA("BasePart") then v.CanCollide = false end
-                end
-                runService.Heartbeat:Wait()
             end
-            hrp.Anchored = false -- 解除
-        end)
-    else
-        hrp.Anchored = false
-    end
-end)
-
--- 攻撃（ノックバック）対策：速度を常にゼロに上書き
-runService.Heartbeat:Connect(function()
-    if ghostActive and player.Character then
-        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.Velocity = Vector3.new(0, 0, 0)
-            hrp.RotVelocity = Vector3.new(0, 0, 0)
         end
     end
+
+    -- 2. サーバーが「壁に当たった」と判定する前に、一気に座標を書き換える
+    -- 自分の向きに合わせて、前方の「壁の向こう側」へ
+    local targetPos = hrp.CFrame * CFrame.new(0, 0, -teleportDistance)
+    
+    -- 物理演算を一時停止して位置を確定させる
+    hrp.Anchored = true
+    hrp.CFrame = targetPos
+    if targetHRP then
+        targetHRP.Anchored = true
+        targetHRP.CFrame = targetPos
+    end
+    
+    -- サーバーが位置を認識するまでわずかに待機（0.1秒）
+    task.wait(0.1)
+    
+    hrp.Anchored = false
+    if targetHRP then targetHRP.Anchored = false end
+    
+    bypassBtn.Text = "BYPASSED!"
+    task.wait(1)
+    bypassBtn.Text = "WINDOW BYPASS"
 end)
