@@ -2,25 +2,38 @@ local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 local noclipEnabled = false
 
--- UI
+-- UI作成
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
+
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 45, 0, 45)
-toggleBtn.Position = UDim2.new(1, -65, 0, 25)
+toggleBtn.Size = UDim2.new(0, 50, 0, 50)
+toggleBtn.Position = UDim2.new(1, -70, 0, 30) -- 右上
 toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.Text = "OFF"
+toggleBtn.Text = "PUSH" -- 押すだけなのでPUSHに変更
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.SourceSansBold
 toggleBtn.Parent = screenGui
 Instance.new("UICorner").Parent = toggleBtn
 
+-- 0.2秒だけONにする関数
 toggleBtn.MouseButton1Click:Connect(function()
-    noclipEnabled = not noclipEnabled
-    toggleBtn.Text = noclipEnabled and "ON" or "OFF"
-    toggleBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(40, 40, 40)
+    if noclipEnabled then return end -- すでに実行中なら無視
+    
+    noclipEnabled = true
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+    toggleBtn.Text = "GO!"
+    
+    -- 0.2秒待ってから自動でOFF
+    task.wait(0.2)
+    
+    noclipEnabled = false
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    toggleBtn.Text = "PUSH"
 end)
 
--- サーバー監視を飛び越えるロジック
+-- 実行ロジック
 runService.Stepped:Connect(function()
     if not noclipEnabled then return end
     
@@ -29,19 +42,19 @@ runService.Stepped:Connect(function()
     local hum = char and char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
 
-    -- 物理判定を完全に無効化
+    -- 自身の衝突判定をオフ
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             part.CanCollide = false
         end
     end
 
-    -- 移動中のみ、座標を「飛び越え（Blink）」させる
+    -- 0.2秒の間、スティックを倒している方向に高速移動（壁を突き抜ける）
     if hum.MoveDirection.Magnitude > 0 then
-        -- 0.5スタッドずつ瞬間移動（サーバーが戻す速度より速く移動）
-        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 0.6)
+        -- 前回の0.8からさらに強化。一瞬で抜けるために距離を稼ぐ
+        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 1.5)
     end
     
-    -- 落下防止：足元に透明な足場を仮定するか、Y軸の速度を固定
+    -- 物理エンジンの介入を防止
     hrp.Velocity = Vector3.new(0, 0, 0)
 end)
