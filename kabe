@@ -1,8 +1,8 @@
 local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 
-local noclipEnabled = false
-local godModeEnabled = false
+local ghostActive = false
+local ghostChar = nil
 
 -- UI
 local screenGui = Instance.new("ScreenGui")
@@ -11,7 +11,7 @@ screenGui.ResetOnSpawn = false
 
 local function createBtn(text, pos, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 70, 0, 45)
+    btn.Size = UDim2.new(0, 100, 0, 45)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.Text = text
@@ -22,53 +22,51 @@ local function createBtn(text, pos, color)
     return btn
 end
 
--- ボタン配置（右上に並べます）
-local noclipBtn = createBtn("Noclip", UDim2.new(1, -160, 0, 25), Color3.fromRGB(60, 60, 60))
-local godBtn = createBtn("GodMode", UDim2.new(1, -80, 0, 25), Color3.fromRGB(60, 60, 60))
+local ghostBtn = createBtn("GHOST MODE", UDim2.new(1, -110, 0, 25), Color3.fromRGB(40, 40, 40))
 
--- 1. 壁抜け (Noclip) ロジック
-noclipBtn.MouseButton1Click:Connect(function()
-    noclipEnabled = not noclipEnabled
-    noclipBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(60, 60, 60)
-end)
-
-runService.Stepped:Connect(function()
-    if noclipEnabled and player.Character then
-        for _, v in pairs(player.Character:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.CanCollide = false
-            end
-        end
-    end
-end)
-
--- 2. 無敵 & ノックバック無効 (God Mode) ロジック
-godBtn.MouseButton1Click:Connect(function()
-    godModeEnabled = not godModeEnabled
-    godBtn.BackgroundColor3 = godModeEnabled and Color3.fromRGB(255, 0, 100) or Color3.fromRGB(60, 60, 60)
+-- ゴーストモード：物理的な干渉をすべてバイパスする
+ghostBtn.MouseButton1Click:Connect(function()
+    ghostActive = not ghostActive
+    ghostBtn.BackgroundColor3 = ghostActive and Color3.fromRGB(0, 255, 100) or Color3.fromRGB(40, 40, 40)
     
     local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    
-    if godModeEnabled and hum then
-        -- ダメージを受けないようにステートを変更
-        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    if ghostActive then
+        -- 【発動時】物理演算から切り離す
+        -- キャラクターを空中にわずかに浮かせて「アンカー」する
+        hrp.Anchored = true
+        
+        -- 移動用のループ（サーバーの座標チェックを騙す）
+        task.spawn(function()
+            while ghostActive do
+                local moveDir = char.Humanoid.MoveDirection
+                if moveDir.Magnitude > 0 then
+                    -- アンカーされた状態で座標を少しずつずらす（サーバーには「歩いている」ように見えない）
+                    hrp.CFrame = hrp.CFrame + (moveDir * 0.8) -- 速度調整
+                end
+                
+                -- すべてのパーツの衝突判定を毎フレーム強制OFF
+                for _, v in pairs(char:GetDescendants()) do
+                    if v:IsA("BasePart") then v.CanCollide = false end
+                end
+                runService.Heartbeat:Wait()
+            end
+            hrp.Anchored = false -- 解除
+        end)
     else
-        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-        hum:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
+        hrp.Anchored = false
     end
 end)
 
--- ノックバック（物理的な衝撃）を常に打ち消す
+-- 攻撃（ノックバック）対策：速度を常にゼロに上書き
 runService.Heartbeat:Connect(function()
-    if godModeEnabled and player.Character then
+    if ghostActive and player.Character then
         local hrp = player.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
-            hrp.Velocity = Vector3.new(0, hrp.Velocity.Y, 0) -- 横方向の衝撃をリセット
-            hrp.RotVelocity = Vector3.new(0, 0, 0) -- 回転衝撃をリセット
+            hrp.Velocity = Vector3.new(0, 0, 0)
+            hrp.RotVelocity = Vector3.new(0, 0, 0)
         end
     end
 end)
