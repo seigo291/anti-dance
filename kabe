@@ -6,46 +6,44 @@ local isTeleporting = false
 
 -- UI作成
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "FinalTeleportSystem"
+screenGui.Name = "DebugTeleportSystem"
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
 
 local function createBtn(text, pos, color)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 45, 0, 45)
+    btn.Size = UDim2.new(0, 60, 0, 45)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.Text = text
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
     btn.Parent = screenGui
     Instance.new("UICorner").Parent = btn
     return btn
 end
 
-local setBtn = createBtn("SET", UDim2.new(1, -115, 0, 25), Color3.fromRGB(0, 100, 200))
-local getBtn = createBtn("GET", UDim2.new(1, -60, 0, 25), Color3.fromRGB(60, 60, 60))
+local setBtn = createBtn("SET", UDim2.new(1, -135, 0, 25), Color3.fromRGB(0, 100, 200))
+local getBtn = createBtn("GET", UDim2.new(1, -70, 0, 25), Color3.fromRGB(60, 60, 60))
 
--- [SET] 自分の基地で実行
+-- [SET] 処理
 setBtn.MouseButton1Click:Connect(function()
-    local char = player.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
         spawnLocation = hrp.CFrame
-        setBtn.Text = "SAVED"
-        setBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        setBtn.Text = "OK"
         getBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
         task.wait(1)
         setBtn.Text = "SET"
-        setBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
     end
 end)
 
--- [GET] 敵の基地でキャラを掴んで実行
+-- [GET] 処理
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting then return end
     if not spawnLocation then
-        getBtn.Text = "NO SET"
+        getBtn.Text = "SET FIRST"
         task.wait(1)
         getBtn.Text = "GET"
         return
@@ -57,45 +55,45 @@ getBtn.MouseButton1Click:Connect(function()
 
     isTeleporting = true
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    getBtn.Text = "SEARCH..."
 
-    -- 1. 周囲のターゲットを特定
-    local targetModel = nil
+    -- 1. 周囲にある「自分以外のパーツ」を力ずくで全部見つける
+    local foundParts = {}
     for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not v:IsDescendantOf(char) then
-            if (v.Position - hrp.Position).Magnitude < 10 then
-                local model = v:FindFirstAncestorOfClass("Model")
-                if model and model:FindFirstChild("HumanoidRootPart") then
-                    targetModel = model
-                    break
-                end
+        if v:IsA("BasePart") and not v:IsDescendantOf(char) and v.CanCollide == true then
+            local dist = (v.Position - hrp.Position).Magnitude
+            if dist < 12 then -- 12スタッド以内
+                table.insert(foundParts, v)
             end
         end
     end
 
-    if targetModel then
+    if #foundParts > 0 then
+        getBtn.Text = "GO!"
         local enemyPos = hrp.CFrame
-        local targetHRP = targetModel.HumanoidRootPart
         
-        -- 2. ネットワーク所有権の矛盾を防ぐため、一瞬だけあなたのキャラの子にする（試行）
-        local oldParent = targetModel.Parent
-        targetModel.Parent = char
+        -- 2. 自分と、見つけた全てのパーツをワープさせる
+        -- (パーツそのものを飛ばすことで、Model判定に頼らない)
+        local function teleportAll(cf)
+            hrp.CFrame = cf
+            for _, p in pairs(foundParts) do
+                if p and p.Parent then
+                    p.CFrame = cf
+                end
+            end
+        end
+
+        teleportAll(spawnLocation)
+        task.wait(0.6) -- 納品判定待ち
+        teleportAll(enemyPos)
         
-        -- 3. ワープ（自陣へ）
-        hrp.CFrame = spawnLocation
-        targetHRP.CFrame = spawnLocation
-        
-        -- 4. 判定を待つ（0.5秒）
-        task.wait(0.5)
-        
-        -- 5. 元の親に戻して敵基地へ帰還
-        targetModel.Parent = oldParent
-        hrp.CFrame = enemyPos
+        getBtn.Text = "SUCCESS"
     else
-        getBtn.Text = "EMPTY" -- ターゲットが見つからない場合
-        task.wait(1)
-        getBtn.Text = "GET"
+        getBtn.Text = "NOT FOUND" -- ターゲットが見つからない
     end
 
+    task.wait(1)
+    getBtn.Text = "GET"
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
     isTeleporting = false
 end)
