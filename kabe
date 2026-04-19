@@ -4,7 +4,7 @@ local runService = game:GetService("RunService")
 local spawnLocation = nil
 local isTeleporting = false
 
--- UI作成
+-- UI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
@@ -25,7 +25,7 @@ end
 local setBtn = createBtn("SET", UDim2.new(1, -115, 0, 25), Color3.fromRGB(0, 100, 200))
 local getBtn = createBtn("GET", UDim2.new(1, -60, 0, 25), Color3.fromRGB(60, 60, 60))
 
--- [SET] 処理：納品板の「真上」で保存してください
+-- [SET] 処理
 setBtn.MouseButton1Click:Connect(function()
     local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
@@ -37,7 +37,7 @@ setBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- [GET] 処理：叩きつけ納品
+-- [GET] 処理：物理エンジンの隙間を突く「瞬間強制納品」
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting or not spawnLocation then return end
     isTeleporting = true
@@ -49,38 +49,48 @@ getBtn.MouseButton1Click:Connect(function()
     if hrp then
         local enemyPos = hrp.CFrame
         
-        -- 1. 運ぶ対象（盗んだキャラ）を特定
-        local carryModel = nil
+        -- 1. ターゲット（盗んでいるキャラ）を特定し、物理属性をハック
+        local target = nil
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") and not v:IsDescendantOf(char) then
                 if (v.Position - hrp.Position).Magnitude < 10 then
-                    carryModel = v:FindFirstAncestorOfClass("Model")
-                    if carryModel then break end
+                    target = v:FindFirstAncestorOfClass("Model")
+                    if target then break end
                 end
             end
         end
 
-        -- 2. 自分とキャラを納品場所へ（判定のため少し高めにワープ）
-        local dropPos = spawnLocation * CFrame.new(0, 1, 0)
-        hrp.CFrame = dropPos
-        if carryModel and carryModel:FindFirstChild("HumanoidRootPart") then
-            carryModel.HumanoidRootPart.CFrame = dropPos
-        end
+        if target and target:FindFirstChild("HumanoidRootPart") then
+            local targetHRP = target.HumanoidRootPart
+            
+            -- 2. 【最重要】ネットワーク的な「所有権」の隙を作るため、
+            -- 一瞬だけターゲットを自分の一部のように振る舞わせる
+            local function moveSequence(cf)
+                hrp.CFrame = cf
+                targetHRP.CFrame = cf
+                -- サーバーに「これは自然な移動だ」と思わせるために微細な速度を与える
+                targetHRP.Velocity = Vector3.new(0, -2, 0) 
+            end
 
-        -- 3. 【最重要】下方向へ強い力を加えて「納品板」に叩きつける
-        task.wait(0.05) -- ワープ直後のラグ待ち
-        local impactVelocity = Vector3.new(0, -50, 0)
-        hrp.Velocity = impactVelocity
-        if carryModel and carryModel:FindFirstChild("HumanoidRootPart") then
-            carryModel.HumanoidRootPart.Velocity = impactVelocity
+            -- 3. 自陣へワープ（滞在時間を少し伸ばす: 0.8秒）
+            -- サーバーが「敵基地から消えた」ことを認識するまでの猶予
+            moveSequence(spawnLocation)
+            
+            -- 4. 判定を強制するために、納品ポイントを「踏みしめる」動き
+            local startTime = tick()
+            while tick() - startTime < 0.8 do
+                targetHRP.CFrame = spawnLocation * CFrame.new(0, math.sin(tick()*10)*0.1, 0)
+                runService.Heartbeat:Wait()
+            end
+            
+            -- 5. 敵基地へ戻る
+            hrp.CFrame = enemyPos
+        else
+            -- ターゲットが見つからない場合、自分だけワープして戻る（デバッグ用）
+            hrp.CFrame = spawnLocation
+            task.wait(0.5)
+            hrp.CFrame = enemyPos
         end
-
-        -- 4. 判定が受理されるまで少し待機
-        task.wait(0.4)
-        
-        -- 5. 敵基地へ戻る
-        hrp.CFrame = enemyPos
-        hrp.Velocity = Vector3.new(0, 0, 0)
     end
 
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
