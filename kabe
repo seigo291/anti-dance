@@ -37,7 +37,7 @@ setBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- [GET] 処理：掴んでいるものすべてを道連れにするワープ
+-- [GET] 処理：物理エンジンを道連れにする
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting or not spawnLocation then return end
     isTeleporting = true
@@ -49,36 +49,37 @@ getBtn.MouseButton1Click:Connect(function()
     if hrp then
         local enemyPos = hrp.CFrame
         
-        -- 1. 納品場所の「少し上」に移動（地面との衝突死を防ぐ）
-        local targetPos = spawnLocation * CFrame.new(0, 2, 0)
-        
-        -- 2. 【最重要】自分と「繋がっている」パーツをすべて強制移動させる
-        -- これにより、掴んでいるキャラも一緒にワープさせます
-        local function teleportAll(newCFrame)
-            -- 自分の体を移動
-            hrp.CFrame = newCFrame
-            
-            -- 自分に接続されている他人のパーツを探して強制同期
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("BasePart") and not v:IsDescendantOf(char) then
-                    -- 自分の体の近くにあり、かつ拘束(Weld等)されている可能性が高いものをチェック
-                    if (v.Position - hrp.Position).Magnitude < 10 then
-                        -- パーツ自体ではなく、その親モデル（キャラ全体）を動かす
-                        local model = v:FindFirstAncestorOfClass("Model")
-                        if model and model:FindFirstChild("HumanoidRootPart") then
-                             model.HumanoidRootPart.CFrame = newCFrame
-                        end
-                    end
+        -- 1. 周囲にある「掴んでいる可能性が高いパーツ」をすべてリストアップ
+        local carryParts = {}
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") and not v:IsDescendantOf(char) then
+                if (v.Position - hrp.Position).Magnitude < 8 then
+                    table.insert(carryParts, v)
+                    -- サーバー側の「位置戻し」に抵抗するため一時的にアンカーを外す
+                    v.Anchored = false 
                 end
             end
         end
 
-        -- 納品実行
-        teleportAll(targetPos)
-        task.wait(0.5) -- サーバーが「キャラが届いた」と判定するのを待つ
+        -- 2. 自分と対象物を「同時」に座標上書き
+        local function instantMove(targetCF)
+            hrp.CFrame = targetCF
+            for _, p in pairs(carryParts) do
+                p.CFrame = targetCF
+                p.Velocity = Vector3.new(0, 0, 0) -- 慣性で飛んでいくのを防ぐ
+            end
+        end
+
+        -- 納品場所へ（判定のために0.3秒滞在）
+        instantMove(spawnLocation)
+        task.wait(0.3)
+        
+        -- 3. 【重要】納品ポイントで一度だけ「微動」させてTouchedを誘発
+        instantMove(spawnLocation * CFrame.new(0, 0.2, 0))
+        task.wait(0.1)
         
         -- 敵基地へ戻る
-        teleportAll(enemyPos)
+        instantMove(enemyPos)
     end
 
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
