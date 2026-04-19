@@ -2,59 +2,59 @@ local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 local noclipEnabled = false
 
--- UI作成
+-- UI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
-
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 50, 0, 50)
-toggleBtn.Position = UDim2.new(1, -70, 0, 30) -- 右上
+toggleBtn.Position = UDim2.new(1, -70, 0, 30)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.Text = "PUSH" -- 押すだけなのでPUSHに変更
+toggleBtn.Text = "PUSH"
 toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Font = Enum.Font.SourceSansBold
 toggleBtn.Parent = screenGui
 Instance.new("UICorner").Parent = toggleBtn
 
--- 0.2秒だけONにする関数
-toggleBtn.MouseButton1Click:Connect(function()
-    if noclipEnabled then return end -- すでに実行中なら無視
-    
-    noclipEnabled = true
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
-    toggleBtn.Text = "GO!"
-    
-    -- 0.2秒待ってから自動でOFF
-    task.wait(0.2)
-    
-    noclipEnabled = false
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    toggleBtn.Text = "PUSH"
-end)
+-- 死亡回避の常時発動（可能な限り）
+local function protectHumanoid()
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        -- サーバー側からの死亡命令は完全には防げないが、
+        -- 物理的なダメージパーツによる死亡を遅らせる
+        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    end
+end
+player.CharacterAdded:Connect(protectHumanoid)
+protectHumanoid()
 
--- 実行ロジック
-runService.Stepped:Connect(function()
-    if not noclipEnabled then return end
+-- 0.2秒の超高速壁抜け
+toggleBtn.MouseButton1Click:Connect(function()
+    if noclipEnabled then return end
+    noclipEnabled = true
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- 実行中は赤
     
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
-    if not hrp or not hum then return end
-
-    -- 自身の衝突判定をオフ
-    for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
+    
+    if hrp and hum then
+        -- 1. 衝突判定を消す
+        for _, v in pairs(char:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+        
+        -- 2. 一瞬で「壁の向こう」へ飛ばす (距離を調整: 2.0)
+        -- これにより壁の中に滞在する時間を極限まで減らし、検知を避ける
+        if hum.MoveDirection.Magnitude > 0 then
+            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 2.0)
+        else
+            hrp.CFrame = hrp.CFrame + (hrp.CFrame.LookVector * 2.0)
         end
     end
 
-    -- 0.2秒の間、スティックを倒している方向に高速移動（壁を突き抜ける）
-    if hum.MoveDirection.Magnitude > 0 then
-        -- 前回の0.8からさらに強化。一瞬で抜けるために距離を稼ぐ
-        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 1.5)
-    end
+    task.wait(0.2)
     
-    -- 物理エンジンの介入を防止
-    hrp.Velocity = Vector3.new(0, 0, 0)
+    noclipEnabled = false
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 end)
