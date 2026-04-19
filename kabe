@@ -20,42 +20,28 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(40, 40, 40)
 end)
 
--- 戻される動き（サーバーサイド・テレポート）への対抗ロジック
+-- サーバー監視を飛び越えるロジック
 runService.Stepped:Connect(function()
     if not noclipEnabled then return end
     
     local char = player.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
 
-    -- 1. 自身の判定を完全に無効化
+    -- 物理判定を完全に無効化
     for _, part in pairs(char:GetDescendants()) do
         if part:IsA("BasePart") then
             part.CanCollide = false
         end
     end
 
-    -- 2. 【最重要】周辺の「透明な壁」を物理的にではなく、自分の世界から「隠蔽」する
-    -- これにより、クライアント側での衝突計算そのものを発生させない
-    local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 15)
-    for _, p in pairs(nearby) do
-        -- 透明な壁（窓）や鉄格子などの怪しいパーツを狙い撃ち
-        if p:IsA("BasePart") and (p.Transparency > 0 or p.Name:lower():find("window") or p.Name:lower():find("bar")) then
-            -- 削除(Destroy)すると再生成される可能性があるため、Parentを一時的にnilにする（高度な隠蔽）
-            p.CanCollide = false
-            -- p.Parent = nil -- 戻されるのが酷い場合はここを有効化（自己責任）
-        end
-        
-        -- 盗んでいる対象のキャラも一緒に判定を切る
-        if p.Parent:FindFirstChild("Humanoid") and p.Parent ~= char then
-            for _, limb in pairs(p.Parent:GetChildren()) do
-                if limb:IsA("BasePart") then limb.CanCollide = false end
-            end
-        end
+    -- 移動中のみ、座標を「飛び越え（Blink）」させる
+    if hum.MoveDirection.Magnitude > 0 then
+        -- 0.5スタッドずつ瞬間移動（サーバーが戻す速度より速く移動）
+        hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 0.6)
     end
-
-    -- 3. ネットワークラグを利用した「位置固定」
-    -- サーバーからの座標上書きに抵抗するため、微弱な反発力を維持
-    hrp.Velocity = hrp.CFrame.LookVector * 20 -- 前方への推進力を強制維持
+    
+    -- 落下防止：足元に透明な足場を仮定するか、Y軸の速度を固定
+    hrp.Velocity = Vector3.new(0, 0, 0)
 end)
