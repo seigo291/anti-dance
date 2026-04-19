@@ -1,5 +1,5 @@
 local player = game.Players.LocalPlayer
-local tweenService = game:GetService("TweenService")
+local runService = game:GetService("RunService")
 
 local spawnLocation = nil
 local isTeleporting = false
@@ -25,19 +25,6 @@ end
 local setBtn = createBtn("SET", UDim2.new(1, -115, 0, 25), Color3.fromRGB(0, 100, 200))
 local getBtn = createBtn("GET", UDim2.new(1, -60, 0, 25), Color3.fromRGB(60, 60, 60))
 
--- キャラクターの状態管理
-local function toggleSafety(state)
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, not state)
-        -- 貫通属性を付与
-        for _, v in pairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = not state end
-        end
-    end
-end
-
 -- [SET] 処理
 setBtn.MouseButton1Click:Connect(function()
     local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -50,7 +37,7 @@ setBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- [GET] 処理：納品ポイントの3メートル手前に飛び、そこから歩く
+-- [GET] 処理：掴んでいるものすべてを道連れにするワープ
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting or not spawnLocation then return end
     isTeleporting = true
@@ -58,29 +45,40 @@ getBtn.MouseButton1Click:Connect(function()
 
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChild("Humanoid")
     
-    if hrp and hum then
-        local enemyPos = hrp.CFrame -- 敵基地の場所
+    if hrp then
+        local enemyPos = hrp.CFrame
         
-        -- 1. 納品ポイントの「少し手前」を計算
-        local offset = spawnLocation * CFrame.new(0, 0, 3) -- 3スタッド手前
+        -- 1. 納品場所の「少し上」に移動（地面との衝突死を防ぐ）
+        local targetPos = spawnLocation * CFrame.new(0, 2, 0)
         
-        -- 2. 安全確保して移動
-        toggleSafety(true)
-        hrp.CFrame = offset
-        task.wait(0.1)
+        -- 2. 【最重要】自分と「繋がっている」パーツをすべて強制移動させる
+        -- これにより、掴んでいるキャラも一緒にワープさせます
+        local function teleportAll(newCFrame)
+            -- 自分の体を移動
+            hrp.CFrame = newCFrame
+            
+            -- 自分に接続されている他人のパーツを探して強制同期
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("BasePart") and not v:IsDescendantOf(char) then
+                    -- 自分の体の近くにあり、かつ拘束(Weld等)されている可能性が高いものをチェック
+                    if (v.Position - hrp.Position).Magnitude < 10 then
+                        -- パーツ自体ではなく、その親モデル（キャラ全体）を動かす
+                        local model = v:FindFirstAncestorOfClass("Model")
+                        if model and model:FindFirstChild("HumanoidRootPart") then
+                             model.HumanoidRootPart.CFrame = newCFrame
+                        end
+                    end
+                end
+            end
+        end
+
+        -- 納品実行
+        teleportAll(targetPos)
+        task.wait(0.5) -- サーバーが「キャラが届いた」と判定するのを待つ
         
-        -- 3. 【新機能】自動歩行で納品ポイントへ突っ込む
-        hum:MoveTo(spawnLocation.Position)
-        
-        -- 4. 納品完了を待つ（MoveToが終わるまで、最大1秒）
-        hum.MoveToFinished:Wait()
-        task.wait(0.2) -- 念のための余裕
-        
-        -- 5. 敵基地へ戻る（戻る時はスムーズに）
-        hrp.CFrame = enemyPos
-        toggleSafety(false)
+        -- 敵基地へ戻る
+        teleportAll(enemyPos)
     end
 
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
