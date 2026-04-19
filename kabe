@@ -4,7 +4,7 @@ local runService = game:GetService("RunService")
 local spawnLocation = nil
 local isTeleporting = false
 
--- UI
+-- UI作成
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
@@ -25,7 +25,7 @@ end
 local setBtn = createBtn("SET", UDim2.new(1, -115, 0, 25), Color3.fromRGB(0, 100, 200))
 local getBtn = createBtn("GET", UDim2.new(1, -60, 0, 25), Color3.fromRGB(60, 60, 60))
 
--- [SET] 処理
+-- [SET] 処理：納品板の「真上」で保存してください
 setBtn.MouseButton1Click:Connect(function()
     local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
@@ -37,7 +37,7 @@ setBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- [GET] 処理：物理エンジンを道連れにする
+-- [GET] 処理：叩きつけ納品
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting or not spawnLocation then return end
     isTeleporting = true
@@ -49,37 +49,38 @@ getBtn.MouseButton1Click:Connect(function()
     if hrp then
         local enemyPos = hrp.CFrame
         
-        -- 1. 周囲にある「掴んでいる可能性が高いパーツ」をすべてリストアップ
-        local carryParts = {}
+        -- 1. 運ぶ対象（盗んだキャラ）を特定
+        local carryModel = nil
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") and not v:IsDescendantOf(char) then
-                if (v.Position - hrp.Position).Magnitude < 8 then
-                    table.insert(carryParts, v)
-                    -- サーバー側の「位置戻し」に抵抗するため一時的にアンカーを外す
-                    v.Anchored = false 
+                if (v.Position - hrp.Position).Magnitude < 10 then
+                    carryModel = v:FindFirstAncestorOfClass("Model")
+                    if carryModel then break end
                 end
             end
         end
 
-        -- 2. 自分と対象物を「同時」に座標上書き
-        local function instantMove(targetCF)
-            hrp.CFrame = targetCF
-            for _, p in pairs(carryParts) do
-                p.CFrame = targetCF
-                p.Velocity = Vector3.new(0, 0, 0) -- 慣性で飛んでいくのを防ぐ
-            end
+        -- 2. 自分とキャラを納品場所へ（判定のため少し高めにワープ）
+        local dropPos = spawnLocation * CFrame.new(0, 1, 0)
+        hrp.CFrame = dropPos
+        if carryModel and carryModel:FindFirstChild("HumanoidRootPart") then
+            carryModel.HumanoidRootPart.CFrame = dropPos
         end
 
-        -- 納品場所へ（判定のために0.3秒滞在）
-        instantMove(spawnLocation)
-        task.wait(0.3)
+        -- 3. 【最重要】下方向へ強い力を加えて「納品板」に叩きつける
+        task.wait(0.05) -- ワープ直後のラグ待ち
+        local impactVelocity = Vector3.new(0, -50, 0)
+        hrp.Velocity = impactVelocity
+        if carryModel and carryModel:FindFirstChild("HumanoidRootPart") then
+            carryModel.HumanoidRootPart.Velocity = impactVelocity
+        end
+
+        -- 4. 判定が受理されるまで少し待機
+        task.wait(0.4)
         
-        -- 3. 【重要】納品ポイントで一度だけ「微動」させてTouchedを誘発
-        instantMove(spawnLocation * CFrame.new(0, 0.2, 0))
-        task.wait(0.1)
-        
-        -- 敵基地へ戻る
-        instantMove(enemyPos)
+        -- 5. 敵基地へ戻る
+        hrp.CFrame = enemyPos
+        hrp.Velocity = Vector3.new(0, 0, 0)
     end
 
     getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
