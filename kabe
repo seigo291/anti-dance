@@ -2,7 +2,7 @@ local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 local noclipEnabled = false
 
--- UI
+-- UI設定
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
@@ -15,38 +15,43 @@ toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Parent = screenGui
 Instance.new("UICorner").Parent = toggleBtn
 
--- 0.2秒間の「超高速・高密度」壁抜け
+-- 0.2秒間、周囲の障害物を「無効化」する
 toggleBtn.MouseButton1Click:Connect(function()
     if noclipEnabled then return end
     noclipEnabled = true
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0) -- 実行中(オレンジ)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 255) -- 実行中（マゼンタ）
     
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChild("Humanoid")
-    
-    if hrp and hum then
-        -- 1. 衝突判定をオフ
-        for _, v in pairs(char:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = false end
-        end
+    if not hrp then noclipEnabled = false return end
 
-        -- 2. 0.2秒間、超高速で座標を更新し続ける（サーバーの補正を上回る速度）
-        local startTime = tick()
-        while tick() - startTime < 0.2 do
-            local moveDir = hum.MoveDirection
-            if moveDir.Magnitude == 0 then moveDir = hrp.CFrame.LookVector end
-            
-            -- 座標を細かく更新（これが一番戻されにくい）
-            hrp.CFrame = hrp.CFrame + (moveDir * 0.7)
-            -- 物理的な押し戻しに対抗する速度を付与
-            hrp.Velocity = moveDir * 100 
-            
-            runService.Heartbeat:Wait() -- サーバーとの同期タイミングで実行
+    -- 1. 自身の判定をオフ
+    for _, v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then v.CanCollide = false end
+    end
+
+    -- 2. 周囲のパーツをスキャンして「一時的に親を隠す」
+    -- DestroyではなくParentをnilにすることで、サーバーにバレにくくする
+    local ignoredParts = {}
+    local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 15)
+    
+    for _, p in pairs(nearby) do
+        -- 透明な壁（窓）や、基地のパーツを特定
+        if p:IsA("BasePart") and not p:IsDescendantOf(char) and p.Transparency > 0 then
+            local oldParent = p.Parent
+            table.insert(ignoredParts, {part = p, parent = oldParent})
+            p.Parent = nil -- 自分の画面から消す
         end
+    end
+
+    -- 0.2秒間だけ自由時間
+    task.wait(0.2)
+
+    -- 3. 消したパーツを元に戻す
+    for _, data in pairs(ignoredParts) do
+        data.part.Parent = data.parent
     end
 
     noclipEnabled = false
     toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    toggleBtn.Text = "PUSH"
 end)
