@@ -2,7 +2,7 @@ local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 local noclipEnabled = false
 
--- UI部分は変更なし
+-- UI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
@@ -12,8 +12,7 @@ toggleBtn.Position = UDim2.new(1, -65, 0, 25)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 toggleBtn.Text = "OFF"
 toggleBtn.Parent = screenGui
-local corner = Instance.new("UICorner")
-corner.Parent = toggleBtn
+Instance.new("UICorner").Parent = toggleBtn
 
 toggleBtn.MouseButton1Click:Connect(function()
     noclipEnabled = not noclipEnabled
@@ -21,39 +20,42 @@ toggleBtn.MouseButton1Click:Connect(function()
     toggleBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(40, 40, 40)
 end)
 
--- 戻される動きを阻止する強化ロジック
+-- 戻される動き（サーバーサイド・テレポート）への対抗ロジック
 runService.Stepped:Connect(function()
+    if not noclipEnabled then return end
+    
     local char = player.Character
     if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
 
-    if noclipEnabled then
-        -- 1. 自身のパーツ判定を「毎フレーム」強制的にオフ
-        -- (オフにした直後にゲーム側にオンにされるのを防ぐ)
-        for _, part in pairs(char:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
+    -- 1. 自身の判定を完全に無効化
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
         end
-
-        -- 2. 速度を固定して物理演算の「弾き出し」を無効化
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            -- わずかに上方向に力をかけることで、床や壁への埋まり判定を回避
-            hrp.Velocity = Vector3.new(hrp.Velocity.X, 0.05, hrp.Velocity.Z)
-        end
-
-        -- 3. 周辺の透明パーツを「完全に無視」させる
-        local parts = workspace:GetPartBoundsInRadius(hrp.Position, 12)
-        for _, p in pairs(parts) do
-            if p:IsA("BasePart") and (p.Transparency > 0 or p.Parent:FindFirstChild("Humanoid")) then
-                p.CanCollide = false
-            end
-        end
-    else
-        -- OFFにした瞬間、物理判定を正常に戻す（埋まって動けなくなるのを防ぐ）
-        -- ただし、壁の中にいるときにOFFにすると即死・即戻しされるので注意
     end
-end)
 
--- サーバーからの「位置修正パケット」を一部無視する設定（可能なエグゼキューターのみ）
-settings().Physics.AllowSleep = true
+    -- 2. 【最重要】周辺の「透明な壁」を物理的にではなく、自分の世界から「隠蔽」する
+    -- これにより、クライアント側での衝突計算そのものを発生させない
+    local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 15)
+    for _, p in pairs(nearby) do
+        -- 透明な壁（窓）や鉄格子などの怪しいパーツを狙い撃ち
+        if p:IsA("BasePart") and (p.Transparency > 0 or p.Name:lower():find("window") or p.Name:lower():find("bar")) then
+            -- 削除(Destroy)すると再生成される可能性があるため、Parentを一時的にnilにする（高度な隠蔽）
+            p.CanCollide = false
+            -- p.Parent = nil -- 戻されるのが酷い場合はここを有効化（自己責任）
+        end
+        
+        -- 盗んでいる対象のキャラも一緒に判定を切る
+        if p.Parent:FindFirstChild("Humanoid") and p.Parent ~= char then
+            for _, limb in pairs(p.Parent:GetChildren()) do
+                if limb:IsA("BasePart") then limb.CanCollide = false end
+            end
+        end
+    end
+
+    -- 3. ネットワークラグを利用した「位置固定」
+    -- サーバーからの座標上書きに抵抗するため、微弱な反発力を維持
+    hrp.Velocity = hrp.CFrame.LookVector * 20 -- 前方への推進力を強制維持
+end)
