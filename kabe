@@ -1,35 +1,35 @@
 local player = game.Players.LocalPlayer
 local runService = game:GetService("RunService")
 
--- 【設定】Dexで調べた「窓のすぐ内側」の座標をここに入れる
--- とりあえず現在の位置から「前方に15スタッド」ワープする設定にしています
-local teleportDistance = 15 
+local isBypassing = false
 
+-- UI作成
 local screenGui = Instance.new("ScreenGui")
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
 
-local function createBtn(text, pos, color)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 120, 0, 50)
-    btn.Position = pos
-    btn.BackgroundColor3 = color
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.Parent = screenGui
-    Instance.new("UICorner").Parent = btn
-    return btn
-end
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(0, 150, 0, 50)
+btn.Position = UDim2.new(0.5, -75, 0.8, 0)
+btn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+btn.Text = "FORCE BYPASS"
+btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+btn.Font = Enum.Font.SourceSansBold
+btn.Parent = screenGui
+Instance.new("UICorner").Parent = btn
 
-local bypassBtn = createBtn("WINDOW BYPASS", UDim2.new(0.5, -60, 1, -100), Color3.fromRGB(255, 50, 50))
-
-bypassBtn.MouseButton1Click:Connect(function()
+btn.MouseButton1Click:Connect(function()
+    if isBypassing then return end
+    
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- 1. 掴んでいるターゲットを特定
+    isBypassing = true
+    btn.Text = "BYPASSING..."
+    btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+
+    -- 1. ターゲット（レアキャラ）を特定
     local targetHRP = nil
     for _, v in pairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and not v:IsDescendantOf(char) then
@@ -43,25 +43,29 @@ bypassBtn.MouseButton1Click:Connect(function()
         end
     end
 
-    -- 2. サーバーが「壁に当たった」と判定する前に、一気に座標を書き換える
-    -- 自分の向きに合わせて、前方の「壁の向こう側」へ
-    local targetPos = hrp.CFrame * CFrame.new(0, 0, -teleportDistance)
-    
-    -- 物理演算を一時停止して位置を確定させる
+    -- 2. 【核心】ネットワークの同期を一時的にフリーズさせる
+    -- サーバーに「動いている最中」を見せないための処理
+    local oldCFrame = hrp.CFrame
+    local bypassTarget = hrp.CFrame * CFrame.new(0, 0, -20) -- 20スタッド前方に飛ばす
+
+    -- 3. 瞬間移動＋物理固定
     hrp.Anchored = true
-    hrp.CFrame = targetPos
-    if targetHRP then
-        targetHRP.Anchored = true
-        targetHRP.CFrame = targetPos
+    if targetHRP then targetHRP.Anchored = true end
+
+    -- 4. サーバーの「引き戻し計算」が諦めるまで、複数のサブフレームで位置を上書きし続ける
+    for i = 1, 30 do
+        hrp.CFrame = bypassTarget
+        if targetHRP then targetHRP.CFrame = bypassTarget end
+        runService.Heartbeat:Wait()
     end
-    
-    -- サーバーが位置を認識するまでわずかに待機（0.1秒）
-    task.wait(0.1)
-    
+
+    -- 5. 固定解除（この瞬間にサーバーが新しい位置を「正解」として受け入れる）
     hrp.Anchored = false
     if targetHRP then targetHRP.Anchored = false end
-    
-    bypassBtn.Text = "BYPASSED!"
+
+    btn.Text = "DONE!"
     task.wait(1)
-    bypassBtn.Text = "WINDOW BYPASS"
+    btn.Text = "FORCE BYPASS"
+    btn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+    isBypassing = false
 end)
