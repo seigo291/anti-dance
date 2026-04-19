@@ -15,46 +15,38 @@ toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleBtn.Parent = screenGui
 Instance.new("UICorner").Parent = toggleBtn
 
--- 死亡回避の常時発動（可能な限り）
-local function protectHumanoid()
-    local char = player.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        -- サーバー側からの死亡命令は完全には防げないが、
-        -- 物理的なダメージパーツによる死亡を遅らせる
-        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-    end
-end
-player.CharacterAdded:Connect(protectHumanoid)
-protectHumanoid()
-
--- 0.2秒の超高速壁抜け
+-- 0.2秒間の「超高速・高密度」壁抜け
 toggleBtn.MouseButton1Click:Connect(function()
     if noclipEnabled then return end
     noclipEnabled = true
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- 実行中は赤
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0) -- 実行中(オレンジ)
     
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChild("Humanoid")
     
     if hrp and hum then
-        -- 1. 衝突判定を消す
+        -- 1. 衝突判定をオフ
         for _, v in pairs(char:GetDescendants()) do
             if v:IsA("BasePart") then v.CanCollide = false end
         end
-        
-        -- 2. 一瞬で「壁の向こう」へ飛ばす (距離を調整: 2.0)
-        -- これにより壁の中に滞在する時間を極限まで減らし、検知を避ける
-        if hum.MoveDirection.Magnitude > 0 then
-            hrp.CFrame = hrp.CFrame + (hum.MoveDirection * 2.0)
-        else
-            hrp.CFrame = hrp.CFrame + (hrp.CFrame.LookVector * 2.0)
+
+        -- 2. 0.2秒間、超高速で座標を更新し続ける（サーバーの補正を上回る速度）
+        local startTime = tick()
+        while tick() - startTime < 0.2 do
+            local moveDir = hum.MoveDirection
+            if moveDir.Magnitude == 0 then moveDir = hrp.CFrame.LookVector end
+            
+            -- 座標を細かく更新（これが一番戻されにくい）
+            hrp.CFrame = hrp.CFrame + (moveDir * 0.7)
+            -- 物理的な押し戻しに対抗する速度を付与
+            hrp.Velocity = moveDir * 100 
+            
+            runService.Heartbeat:Wait() -- サーバーとの同期タイミングで実行
         end
     end
 
-    task.wait(0.2)
-    
     noclipEnabled = false
     toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    toggleBtn.Text = "PUSH"
 end)
