@@ -37,7 +37,7 @@ setBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- [GET] 処理：物理エンジンの隙間を突く「瞬間強制納品」
+-- [GET] 処理：サーバーの監視をバグらせて納品を確定させる
 getBtn.MouseButton1Click:Connect(function()
     if isTeleporting or not spawnLocation then return end
     isTeleporting = true
@@ -46,10 +46,10 @@ getBtn.MouseButton1Click:Connect(function()
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     
-    if hrp then
+    if hrp and spawnLocation then
         local enemyPos = hrp.CFrame
         
-        -- 1. ターゲット（盗んでいるキャラ）を特定し、物理属性をハック
+        -- 1. 盗んでいるキャラを特定
         local target = nil
         for _, v in pairs(workspace:GetDescendants()) do
             if v:IsA("BasePart") and not v:IsDescendantOf(char) then
@@ -61,34 +61,28 @@ getBtn.MouseButton1Click:Connect(function()
         end
 
         if target and target:FindFirstChild("HumanoidRootPart") then
-            local targetHRP = target.HumanoidRootPart
+            local tHRP = target.HumanoidRootPart
             
-            -- 2. 【最重要】ネットワーク的な「所有権」の隙を作るため、
-            -- 一瞬だけターゲットを自分の一部のように振る舞わせる
-            local function moveSequence(cf)
-                hrp.CFrame = cf
-                targetHRP.CFrame = cf
-                -- サーバーに「これは自然な移動だ」と思わせるために微細な速度を与える
-                targetHRP.Velocity = Vector3.new(0, -2, 0) 
-            end
-
-            -- 3. 自陣へワープ（滞在時間を少し伸ばす: 0.8秒）
-            -- サーバーが「敵基地から消えた」ことを認識するまでの猶予
-            moveSequence(spawnLocation)
+            -- 2. 自陣の判定エリアへ移動
+            hrp.CFrame = spawnLocation
+            tHRP.CFrame = spawnLocation
             
-            -- 4. 判定を強制するために、納品ポイントを「踏みしめる」動き
+            -- 3. 【新ロジック】サーバーの「巻き戻し」を防ぐための強制アンカー＆ラグ
+            -- 0.5秒間、物理演算を完全に停止させて「ここにいる」という状態を固定する
+            tHRP.Anchored = true
+            hrp.Anchored = true
+            
+            -- 4. 0.5秒かけて「納品エリア」の中でターゲットを直接回転させる
+            -- これによりサーバーにTouchedイベントを多重送信する
             local startTime = tick()
-            while tick() - startTime < 0.8 do
-                targetHRP.CFrame = spawnLocation * CFrame.new(0, math.sin(tick()*10)*0.1, 0)
+            while tick() - startTime < 0.6 do
+                tHRP.CFrame = spawnLocation * CFrame.Angles(0, math.rad(tick()*360), 0)
                 runService.Heartbeat:Wait()
             end
             
-            -- 5. 敵基地へ戻る
-            hrp.CFrame = enemyPos
-        else
-            -- ターゲットが見つからない場合、自分だけワープして戻る（デバッグ用）
-            hrp.CFrame = spawnLocation
-            task.wait(0.5)
+            -- 5. アンカー解除して敵基地へ帰還
+            tHRP.Anchored = false
+            hrp.Anchored = false
             hrp.CFrame = enemyPos
         end
     end
