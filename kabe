@@ -1,66 +1,95 @@
 local player = game.Players.LocalPlayer
+local tweenService = game:GetService("TweenService")
 local runService = game:GetService("RunService")
-local noclipEnabled = false
 
--- UI
+local spawnLocation = nil
+local isTeleporting = false
+
+-- UI作成
 local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "SafeTeleportSystem"
 screenGui.Parent = player:WaitForChild("PlayerGui")
 screenGui.ResetOnSpawn = false
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 50, 0, 50)
-toggleBtn.Position = UDim2.new(1, -70, 0, 30)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.Text = "PUSH"
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Parent = screenGui
-Instance.new("UICorner").Parent = toggleBtn
 
--- 透明な足場を作成（サーバーからは見えない）
-local platform = Instance.new("Part")
-platform.Size = Vector3.new(10, 1, 10)
-platform.Transparency = 1 -- 完全に透明
-platform.Anchored = true
-platform.CanCollide = false -- 初期はオフ
-platform.Parent = workspace
+-- SETボタン (記録)
+local setBtn = Instance.new("TextButton")
+setBtn.Size = UDim2.new(0, 45, 0, 45)
+setBtn.Position = UDim2.new(1, -115, 0, 25)
+setBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+setBtn.Text = "SET"
+setBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+setBtn.Parent = screenGui
+Instance.new("UICorner").Parent = setBtn
 
-toggleBtn.MouseButton1Click:Connect(function()
-    if noclipEnabled then return end
-    noclipEnabled = true
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
-    
+-- GETボタン (納品)
+local getBtn = Instance.new("TextButton")
+getBtn.Size = UDim2.new(0, 45, 0, 45)
+getBtn.Position = UDim2.new(1, -60, 0, 25)
+getBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+getBtn.Text = "GET"
+getBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+getBtn.Parent = screenGui
+Instance.new("UICorner").Parent = getBtn
+
+-- 検知回避テレポート関数
+local function safeTeleport(targetCFrame)
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then noclipEnabled = false return end
+    if not hrp then return end
 
-    -- 1. 自身の判定をオフ
+    -- 移動中の無敵化（物理干渉を消して加速を助ける）
+    local oldCanCollide = {}
     for _, v in pairs(char:GetDescendants()) do
-        if v:IsA("BasePart") then v.CanCollide = false end
-    end
-
-    -- 2. 足元に自分専用の床を設置（基地の床に触れさせない）
-    platform.Position = hrp.Position - Vector3.new(0, 3.5, 0)
-    platform.CanCollide = true
-
-    -- 3. 周辺の壁を消去
-    local nearby = workspace:GetPartBoundsInRadius(hrp.Position, 15)
-    local hidden = {}
-    for _, p in pairs(nearby) do
-        if p:IsA("BasePart") and p.Transparency > 0 and p ~= platform then
-            local op = p.Parent
-            table.insert(hidden, {part = p, parent = op})
-            p.Parent = nil
+        if v:IsA("BasePart") then
+            oldCanCollide[v] = v.CanCollide
+            v.CanCollide = false
         end
     end
 
-    -- 0.2秒間の「無敵時間」
-    task.wait(0.2)
+    -- Tweenによる高速移動 (0.15秒かけて滑らかに移動)
+    local info = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = tweenService:Create(hrp, info, {CFrame = targetCFrame})
+    
+    tween:Play()
+    tween.Completed:Wait()
 
-    -- 復元
-    platform.CanCollide = false
-    for _, data in pairs(hidden) do
-        data.part.Parent = data.parent
+    -- 判定復活
+    for part, state in pairs(oldCanCollide) do
+        if part and part.Parent then part.CanCollide = state end
+    end
+end
+
+-- [SET] 処理
+setBtn.MouseButton1Click:Connect(function()
+    local char = player.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        spawnLocation = char.HumanoidRootPart.CFrame
+        setBtn.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+        task.wait(0.5)
+        setBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+    end
+end)
+
+-- [GET] 処理
+getBtn.MouseButton1Click:Connect(function()
+    if isTeleporting or not spawnLocation then return end
+    isTeleporting = true
+    getBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local currentPos = hrp.CFrame
+        
+        -- 1. 納品場所へ高速移動
+        safeTeleport(spawnLocation)
+        task.wait(0.2) -- 納品判定を待つ
+        
+        -- 2. 敵基地へ高速で戻る
+        safeTeleport(currentPos)
     end
 
-    noclipEnabled = false
-    toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    getBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+    isTeleporting = false
 end)
