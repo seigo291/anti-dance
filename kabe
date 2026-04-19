@@ -1,0 +1,62 @@
+--[[
+    Enhanced Anti-Detection Noclip (Mobile Optimized)
+    - 地面（Floor）だけは判定を残し、奈落への落下を防止
+    - サーバー側での不自然な座標移動を抑えるための最適化
+]]
+
+local player = game.Players.LocalPlayer
+local runService = game:GetService("RunService")
+local noclipEnabled = false
+
+-- UI作成
+local screenGui = Instance.new("ScreenGui")
+screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.ResetOnSpawn = false
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0, 45, 0, 45)
+toggleBtn.Position = UDim2.new(1, -65, 0, 25)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+toggleBtn.Text = "OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Parent = screenGui
+local corner = Instance.new("UICorner")
+corner.Parent = toggleBtn
+
+toggleBtn.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    toggleBtn.Text = noclipEnabled and "ON" or "OFF"
+    toggleBtn.BackgroundColor3 = noclipEnabled and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(40, 40, 40)
+end)
+
+-- 検知回避メインロジック
+runService.Stepped:Connect(function()
+    if not noclipEnabled then return end
+    
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- キャラクターの各パーツをループ
+    for _, part in pairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            -- 足元の地面（下方向へのRaycast）を確認
+            local ray = Ray.new(hrp.Position, Vector3.new(0, -5, 0))
+            local hitPart = workspace:FindPartOnRay(ray, char)
+            
+            -- 地面以外の壁や窓だけをすり抜け対象にする
+            if hitPart ~= part then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    -- 周囲の透明な壁・特定のトラップを無効化
+    for _, v in pairs(workspace:GetPartBoundsInRadius(hrp.Position, 10)) do
+        -- 透明なパーツ、または「盗む」ターゲットの判定を無効化
+        if v:IsA("BasePart") and (v.Transparency > 0 or v.Parent:FindFirstChild("Humanoid")) then
+            v.CanCollide = false
+        end
+    end
+end)
