@@ -1,20 +1,28 @@
--- Local Script
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AdminEvent = ReplicatedStorage:WaitForChild("AdminEvent")
-local frame = script.Parent:WaitForChild("Frame")
+-- LocalScript (MainGuiの直下)
+local player = game.Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+local mainGui = script.Parent
+local openBtn = mainGui:WaitForChild("OpenButton")
+local frame = mainGui:WaitForChild("AdminFrame")
+local closeBtn = frame:WaitForChild("CloseButton")
 
--- 視界妨害ボタン
-frame.Button1.MouseButton1Click:Connect(function()
-    AdminEvent:FireServer("BlindAll")
+-- UIの表示位置を強制設定 (スマホでも見える位置)
+openBtn.Size = UDim2.new(0, 100, 0, 50)
+openBtn.Position = UDim2.new(0, 10, 0.5, -25) -- 画面左端の真ん中
+openBtn.Text = "MENU"
+
+frame.Size = UDim2.new(0.4, 0, 0.6, 0)
+frame.Position = UDim2.new(0.3, 0, 0.2, 0)
+frame.Visible = false -- 最初は隠しておく
+
+-- 開くボタン
+openBtn.MouseButton1Click:Connect(function()
+    frame.Visible = true
+    openBtn.Visible = false
 end)
 
--- グローブ取得ボタン
-frame.Button2.MouseButton1Click:Connect(function()
-    AdminEvent:FireServer("GiveGlove")
-end)
-
--- キック用（簡易版：テキストボックスに名前を入れてボタンを押す形式）
-frame.Button3.MouseButton1Click:Connect(function()
-    local target = frame.TextBox.Text -- 名前入力欄を作っておく
-    AdminEvent:FireServer("Kick", target)
+-- 閉じるボタン
+closeBtn.MouseButton1Click:Connect(function()
+    frame.Visible = false
+    openBtn.Visible = true
 end)
