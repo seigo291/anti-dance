@@ -1,71 +1,20 @@
-local player = game.Players.LocalPlayer
-local runService = game:GetService("RunService")
+-- Local Script
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AdminEvent = ReplicatedStorage:WaitForChild("AdminEvent")
+local frame = script.Parent:WaitForChild("Frame")
 
-local isBypassing = false
+-- 視界妨害ボタン
+frame.Button1.MouseButton1Click:Connect(function()
+    AdminEvent:FireServer("BlindAll")
+end)
 
--- UI作成
-local screenGui = Instance.new("ScreenGui")
-screenGui.Parent = player:WaitForChild("PlayerGui")
-screenGui.ResetOnSpawn = false
+-- グローブ取得ボタン
+frame.Button2.MouseButton1Click:Connect(function()
+    AdminEvent:FireServer("GiveGlove")
+end)
 
-local btn = Instance.new("TextButton")
-btn.Size = UDim2.new(0, 150, 0, 50)
-btn.Position = UDim2.new(0.5, -75, 0.8, 0)
-btn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-btn.Text = "FORCE BYPASS"
-btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-btn.Font = Enum.Font.SourceSansBold
-btn.Parent = screenGui
-Instance.new("UICorner").Parent = btn
-
-btn.MouseButton1Click:Connect(function()
-    if isBypassing then return end
-    
-    local char = player.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    isBypassing = true
-    btn.Text = "BYPASSING..."
-    btn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-
-    -- 1. ターゲット（レアキャラ）を特定
-    local targetHRP = nil
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not v:IsDescendantOf(char) then
-            if (v.Position - hrp.Position).Magnitude < 10 then
-                local model = v:FindFirstAncestorOfClass("Model")
-                if model and model:FindFirstChild("HumanoidRootPart") then
-                    targetHRP = model.HumanoidRootPart
-                    break
-                end
-            end
-        end
-    end
-
-    -- 2. 【核心】ネットワークの同期を一時的にフリーズさせる
-    -- サーバーに「動いている最中」を見せないための処理
-    local oldCFrame = hrp.CFrame
-    local bypassTarget = hrp.CFrame * CFrame.new(0, 0, -20) -- 20スタッド前方に飛ばす
-
-    -- 3. 瞬間移動＋物理固定
-    hrp.Anchored = true
-    if targetHRP then targetHRP.Anchored = true end
-
-    -- 4. サーバーの「引き戻し計算」が諦めるまで、複数のサブフレームで位置を上書きし続ける
-    for i = 1, 30 do
-        hrp.CFrame = bypassTarget
-        if targetHRP then targetHRP.CFrame = bypassTarget end
-        runService.Heartbeat:Wait()
-    end
-
-    -- 5. 固定解除（この瞬間にサーバーが新しい位置を「正解」として受け入れる）
-    hrp.Anchored = false
-    if targetHRP then targetHRP.Anchored = false end
-
-    btn.Text = "DONE!"
-    task.wait(1)
-    btn.Text = "FORCE BYPASS"
-    btn.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-    isBypassing = false
+-- キック用（簡易版：テキストボックスに名前を入れてボタンを押す形式）
+frame.Button3.MouseButton1Click:Connect(function()
+    local target = frame.TextBox.Text -- 名前入力欄を作っておく
+    AdminEvent:FireServer("Kick", target)
 end)
