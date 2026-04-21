@@ -2,57 +2,44 @@ local player = game.Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AdminEvent = ReplicatedStorage:WaitForChild("AdminEvent")
 
--- 1. iPhoneでも隠れないUI設定
+-- 1. ScreenGuiの設定（DisplayOrderを最大にして最前面へ）
 local screenGui = script.Parent
 screenGui.IgnoreGuiInset = true 
 screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999 
+screenGui.DisplayOrder = 99999 -- 他のどんなUIよりも手前に出す
 
--- 2. メニューを開くボタン (iPhoneの親指で押しやすい右下に配置)
+-- 2. メニューを開くボタン
+-- iPhoneの「右側中央」はノッチ（カメラの出っ張り）の影響を受けにくい安全地帯です
 local openBtn = Instance.new("TextButton", screenGui)
-openBtn.Name = "OpenAdminBtn"
-openBtn.Size = UDim2.new(0, 120, 0, 60) -- スマホ用に大きく
-openBtn.Position = UDim2.new(1, -130, 0.5, 0) -- 画面右端の中央より少し下
-openBtn.Text = "ADMIN"
-openBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+openBtn.Name = "SafetyOpenBtn"
+openBtn.Size = UDim2.new(0, 140, 0, 70) -- 指が太くても押せる特大サイズ
+openBtn.Position = UDim2.new(1, -150, 0.4, 0) -- 右端から少し内側
+openBtn.Text = "MENU"
+openBtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0) -- 目立つように赤色に
 openBtn.TextColor3 = Color3.new(1, 1, 1)
-openBtn.ZIndex = 1000
+openBtn.ZIndex = 10000
+openBtn.Visible = true
 
--- 角を丸くする（iPhoneっぽく）
+-- 角丸設定
 local corner = Instance.new("UICorner", openBtn)
-corner.CornerRadius = UDim.new(0, 12)
+corner.CornerRadius = UDim.new(0, 15)
 
--- 3. メインパネル
+-- 3. メインパネル（中身は以前と同じ）
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0.8, 0, 0.8, 0) -- 画面の8割を占めるサイズ
-frame.Position = UDim2.new(0.1, 0, 0.1, 0)
-frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+frame.Size = UDim2.new(0.8, 0, 0.7, 0)
+frame.Position = UDim2.new(0.1, 0, 0.15, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.Visible = false
-frame.ZIndex = 1000
+frame.ZIndex = 10000
 
-local frameCorner = Instance.new("UICorner", frame)
-
--- スクロールエリア (キックリスト)
-local scroll = Instance.new("ScrollingFrame", frame)
-scroll.Size = UDim2.new(0.9, 0, 0.5, 0)
-scroll.Position = UDim2.new(0.05, 0, 0.4, 0)
-scroll.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-scroll.ZIndex = 1001
-
-local layout = Instance.new("UIListLayout", scroll)
-layout.Padding = UDim.new(0, 8)
-
--- 4. ボタン作成関数 (iPhoneのタップミスを防ぐサイズ)
 local function createBtn(text, action, pos, color)
     local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(0.43, 0, 0.15, 0)
+    btn.Size = UDim2.new(0.45, 0, 0.2, 0)
     btn.Position = pos
     btn.Text = text
     btn.BackgroundColor3 = color
     btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.ZIndex = 1002
-    Instance.new("UICorner", btn)
-    
+    btn.ZIndex = 10001
     btn.MouseButton1Click:Connect(function()
         if action == "Close" then
             frame.Visible = false
@@ -63,32 +50,12 @@ local function createBtn(text, action, pos, color)
     end)
 end
 
--- クイックボタン (指が届きやすい位置)
-createBtn("視界妨害", "BlindAll", UDim2.new(0.05, 0, 0.05, 0), Color3.fromRGB(80, 80, 80))
-createBtn("エフェクト解除", "CancelAll", UDim2.new(0.52, 0, 0.05, 0), Color3.fromRGB(30, 100, 30))
-createBtn("グローブ取得", "GiveGlove", UDim2.new(0.05, 0, 0.22, 0), Color3.fromRGB(120, 30, 30))
-createBtn("× 閉じる", "Close", UDim2.new(0.52, 0, 0.22, 0), Color3.fromRGB(80, 0, 0))
+createBtn("視界妨害", "BlindAll", UDim2.new(0.02, 0, 0.1, 0), Color3.fromRGB(100, 100, 100))
+createBtn("解除", "CancelAll", UDim2.new(0.52, 0, 0.1, 0), Color3.fromRGB(0, 150, 0))
+createBtn("グローブ", "GiveGlove", UDim2.new(0.02, 0, 0.4, 0), Color3.fromRGB(200, 50, 50))
+createBtn("閉じる", "Close", UDim2.new(0.52, 0, 0.4, 0), Color3.fromRGB(150, 0, 0))
 
--- 5. プレイヤーリスト更新
-local function updateList()
-    for _, child in pairs(scroll:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    for _, p in pairs(game.Players:GetPlayers()) do
-        if p ~= player then
-            local btn = Instance.new("TextButton", scroll)
-            btn.Size = UDim2.new(0.95, 0, 0, 50) -- リストのボタンも大きく
-            btn.Text = "KICK: " .. p.Name
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            btn.TextColor3 = Color3.new(1, 1, 1)
-            btn.ZIndex = 1005
-            Instance.new("UICorner", btn)
-            btn.MouseButton1Click:Connect(function() AdminEvent:FireServer("Kick", p.Name) end)
-        end
-    end
-    scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
-end
-
--- 開閉
 openBtn.MouseButton1Click:Connect(function()
-    frame.Visible
+    frame.Visible = true
+    openBtn.Visible = false
+end)
