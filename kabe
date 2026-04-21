@@ -1,27 +1,93 @@
+local player = game.Players.LocalPlayer
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AdminEvent = Instance.new("RemoteEvent", ReplicatedStorage)
-AdminEvent.Name = "AdminEvent"
+local AdminEvent = ReplicatedStorage:WaitForChild("AdminEvent")
 
-AdminEvent.OnServerEvent:Connect(function(player, action, targetName)
-    -- アクションごとの処理
-    if action == "Kick" then
-        local target = game.Players:FindFirstChild(targetName)
-        if target then target:Kick("\n【管理通知】\nキックされました。") end
-        
-    elseif action == "BlindAll" then
-        for _, p in pairs(game.Players:GetPlayers()) do
-            local cc = Instance.new("ColorCorrectionEffect", game.Lighting)
-            cc.Name = "AdminBlind"
-            cc.Brightness = 10
+-- 1. ScreenGuiの設定を強制上書き
+local screenGui = script.Parent
+screenGui.IgnoreGuiInset = true -- 画面端まで表示を許可
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999 -- 他のUIより手前に表示
+
+-- 2. メニューを開くボタン (画面左端・中央)
+local openBtn = Instance.new("TextButton", screenGui)
+openBtn.Name = "OpenAdminBtn"
+openBtn.Size = UDim2.new(0, 100, 0, 50)
+openBtn.Position = UDim2.new(0, 10, 0.5, -25)
+openBtn.Text = "ADMIN PANEL"
+openBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+openBtn.TextColor3 = Color3.new(1, 1, 1)
+openBtn.ZIndex = 100 -- 最前面に
+
+-- 3. メインパネル（フレーム）
+local frame = Instance.new("Frame", screenGui)
+frame.Name = "AdminFrame"
+frame.Size = UDim2.new(0.6, 0, 0.7, 0)
+frame.Position = UDim2.new(0.2, 0, 0.15, 0)
+frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+frame.BorderSizePixel = 2
+frame.Visible = false
+frame.ZIndex = 100
+
+-- スクロールエリア
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Size = UDim2.new(1, -20, 0.6, 0)
+scroll.Position = UDim2.new(0, 10, 0.35, 0)
+scroll.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+scroll.ZIndex = 101
+
+local layout = Instance.new("UIListLayout", scroll)
+layout.Padding = UDim.new(0, 5)
+
+-- 4. 共通ボタン作成関数
+local function createBtn(text, action, pos, color)
+    local btn = Instance.new("TextButton", frame)
+    btn.Size = UDim2.new(0.45, 0, 0.12, 0)
+    btn.Position = pos
+    btn.Text = text
+    btn.BackgroundColor3 = color
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.ZIndex = 102
+    btn.MouseButton1Click:Connect(function()
+        if action == "Close" then
+            frame.Visible = false
+            openBtn.Visible = true
+        else
+            AdminEvent:FireServer(action)
         end
-        
-    elseif action == "CancelAll" then
-        for _, effect in pairs(game.Lighting:GetChildren()) do
-            if effect.Name == "AdminBlind" then effect:Destroy() end
-        end
-        
-    elseif action == "GiveGlove" then
-        local glove = game.ServerStorage:FindFirstChild("SuperGlove")
-        if glove then glove:Clone().Parent = player.Backpack end
+    end)
+end
+
+-- クイックボタン配置
+createBtn("視界妨害", "BlindAll", UDim2.new(0.02, 0, 0.05, 0), Color3.fromRGB(100, 100, 100))
+createBtn("エフェクト解除", "CancelAll", UDim2.new(0.52, 0, 0.05, 0), Color3.fromRGB(0, 150, 0))
+createBtn("最強グローブ取得", "GiveGlove", UDim2.new(0.02, 0, 0.2, 0), Color3.fromRGB(200, 50, 50))
+createBtn("閉じる", "Close", UDim2.new(0.52, 0, 0.2, 0), Color3.fromRGB(150, 0, 0))
+
+-- 5. プレイヤーリスト更新
+local function updateList()
+    for _, child in pairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
     end
+    for _, p in pairs(game.Players:GetPlayers()) do
+        if p ~= player then
+            local btn = Instance.new("TextButton", scroll)
+            btn.Size = UDim2.new(1, 0, 0, 45)
+            btn.Text = "KICK: " .. p.Name
+            btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+            btn.TextColor3 = Color3.new(1, 1, 1)
+            btn.ZIndex = 105
+            btn.MouseButton1Click:Connect(function() AdminEvent:FireServer("Kick", p.Name) end)
+        end
+    end
+    scroll.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y)
+end
+
+-- 6. 開閉ロジック
+openBtn.MouseButton1Click:Connect(function()
+    frame.Visible = true
+    openBtn.Visible = false
+    updateList()
 end)
+
+game.Players.PlayerAdded:Connect(updateList)
+game.Players.PlayerRemoving:Connect(updateList)
