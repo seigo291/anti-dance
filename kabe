@@ -1,58 +1,27 @@
-local tool = script.Parent
-local handle = tool:WaitForChild("Handle")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AdminEvent = Instance.new("RemoteEvent", ReplicatedStorage)
+AdminEvent.Name = "AdminEvent"
 
--- 設定
-local catchRange = 10 -- 判定を広げるサイズ（大きくするほど当たりやすくなる）
-local isCatching = false
-
--- 判定用の透明なパーツを作成（必中化のキモ）
-local hitBox = Instance.new("Part")
-hitBox.Name = "HitBox"
-hitBox.Shape = Enum.PartType.Ball
-hitBox.Size = Vector3.new(catchRange, catchRange, catchRange)
-hitBox.Transparency = 1 -- 透明
-hitBox.CanCollide = false
-hitBox.Parent = handle
-
-local weld = Instance.new("WeldConstraint")
-weld.Part0 = handle
-weld.Part1 = hitBox
-weld.Parent = hitBox
-
-hitBox.Touched:Connect(function(hit)
-    if isCatching or not tool.Parent:FindFirstChild("Humanoid") then return end
-    
-    local myChar = tool.Parent
-    local targetChar = hit.Parent
-    local targetHum = targetChar:FindFirstChild("Humanoid")
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
-
-    -- 相手が自分でない人間かチェック
-    if targetHum and targetChar ~= myChar and targetRoot then
-        isCatching = true
+AdminEvent.OnServerEvent:Connect(function(player, action, targetName)
+    -- アクションごとの処理
+    if action == "Kick" then
+        local target = game.Players:FindFirstChild(targetName)
+        if target then target:Kick("\n【管理通知】\nキックされました。") end
         
-        -- 【重要】ラグ対策：まずサーバー側で強制的に位置を合わせる
-        targetRoot.CFrame = myRoot.CFrame * CFrame.new(0, 0, -3) -- 自分の少し前にワープ
+    elseif action == "BlindAll" then
+        for _, p in pairs(game.Players:GetPlayers()) do
+            local cc = Instance.new("ColorCorrectionEffect", game.Lighting)
+            cc.Name = "AdminBlind"
+            cc.Brightness = 10
+        end
         
-        -- 物理演算を無視して固定
-        local catchWeld = Instance.new("WeldConstraint")
-        catchWeld.Name = "CatchWeld"
-        catchWeld.Part0 = myRoot
-        catchWeld.Part1 = targetRoot
-        catchWeld.Parent = targetRoot
+    elseif action == "CancelAll" then
+        for _, effect in pairs(game.Lighting:GetChildren()) do
+            if effect.Name == "AdminBlind" then effect:Destroy() end
+        end
         
-        -- 相手を無力化
-        targetHum.PlatformStand = true
-        
-        -- 演出：キャッチした瞬間に音や光を出すと分かりやすい
-        local sound = Instance.new("Sound", handle)
-        sound.SoundId = "rbxassetid://12222200" -- 好きなSEのID
-        sound:Play()
+    elseif action == "GiveGlove" then
+        local glove = game.ServerStorage:FindFirstChild("SuperGlove")
+        if glove then glove:Clone().Parent = player.Backpack end
     end
-end)
-
--- ツールを離した時にキャッチ状態をリセットする場合（必要に応じて）
-tool.Unequipped:Connect(function()
-    isCatching = false
 end)
